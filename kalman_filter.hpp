@@ -20,9 +20,9 @@ class KalmanFilter
     static constexpr int StateSize = StateTransitionMatrix_dt::rows;
     static constexpr int ControlSize = ControlMatrix_dt::cols;
     using StateVector = Eigen::Vector<float, StateSize>;
+    using StateCovMat = Eigen::Matrix<float, StateSize, StateSize>;
     using ControlVector = Eigen::Vector<float, ControlSize>;
     using MeasurementVector = Eigen::Vector<float, MeasSize>;
-    using StateCovMat = Eigen::Matrix<float, StateSize, StateSize>;
     using ObservationMat = Eigen::Matrix<float, MeasSize, StateSize>;
     using MeasNoiseCovMat = Eigen::Matrix<float, MeasSize, MeasSize>;
     using VectorTypes = typename MeasurementContainer::vector_types;
@@ -33,26 +33,8 @@ public:
     {
     }
 
-    void filter_partial(std::vector<float> new_measurement, int measurement_idx, float dt, ControlVector control_vec = ControlVector{})
-    {
-        if (!initialized_)
-        {
-            std::cout << "Filter needs to be initialized with initial state and covariance" << std::endl;
-            return;
-        }
-        partial_update(predict(dt, control_vec), new_measurement, measurement_idx);
-    }
-
-    void filter_full(MeasurementVector new_measurement, float dt, ControlVector control_vec = ControlVector{})
-    {
-        if (!initialized_)
-        {
-            std::cout << "Filter needs to be initialized with initial state and covariance" << std::endl;
-            return;
-        }
-        update(predict(dt, control_vec), new_measurement);
-    }
-
+    //Initialization functions using an estimate of the initial state and covariance.
+    // The std::vector version requires that the matrices are vectorized in a row major manner.
     void init(std::vector<float> initial_state, std::vector<float> initial_state_covariance)
     {
         toMatrix(initial_state, initial_state_);
@@ -60,6 +42,37 @@ public:
         initialized_ = true;
     }
 
+    void init(StateVector initial_state, StateCovMat initial_state_covariance)
+    {
+        initial_state_(initial_state);
+        initial_state_cov_(initial_state_covariance);
+        initialized_ = true;
+    }
+
+    //Filtering using only one measurement along with the index it has in MeasurementContainer, indexes start from 0.
+    void filter_partial(std::vector<float> new_measurement, int measurement_idx, float dt, ControlVector control_vec = ControlVector{})
+    {
+        if (!initialized_)
+        {
+            std::cerr << "Filter needs to be initialized with initial state and covariance" << std::endl;
+            return;
+        }
+        partial_update(predict(dt, control_vec), new_measurement, measurement_idx);
+    }
+
+    //Filtering using the full measurement vector. The measurements need to be appended in the same way they were declared in
+    //the MeasurementContainer
+    void filter_full(MeasurementVector new_measurement, float dt, ControlVector control_vec = ControlVector{})
+    {
+        if (!initialized_)
+        {
+            std::cerr << "Filter needs to be initialized with initial state and covariance" << std::endl;
+            return;
+        }
+        update(predict(dt, control_vec), new_measurement);
+    }
+
+    // Functions to get the current estimated state information
     const StateVector &getState()
     {
         return initial_state_;
@@ -68,6 +81,11 @@ public:
     const StateCovMat &getStateCov()
     {
         return initial_state_cov_;
+    }
+
+    std::pair<const StateVector&, const StateCovMat&> get_estimate()
+    {
+        return std::make_pair(initial_state_,initial_state_cov_);
     }
 
 private:

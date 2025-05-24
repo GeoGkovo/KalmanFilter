@@ -19,14 +19,12 @@ struct MatrixFunctionWrapper
     }
 };
 
-// Helper to create the wrapper
 template <typename T, int Rows, int Cols, typename F>
 auto make_matrix_function_wrapper(F f)
 {
     return MatrixFunctionWrapper<T, Rows, Cols, F>{std::move(f)};
 }
 
-// Non-constexpr dummy wrapper
 const auto default_dummy_wrapper = make_matrix_function_wrapper<double, 0, 0>(
     [](double) -> Eigen::Matrix<double, 0, 0>
     {
