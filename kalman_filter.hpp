@@ -40,7 +40,7 @@ public:
             std::cout << "Filter needs to be initialized with initial state and covariance" << std::endl;
             return;
         }
-        partial_update(predict(dt,control_vec), new_measurement, measurement_idx);
+        partial_update(predict(dt, control_vec), new_measurement, measurement_idx);
     }
 
     void filter_full(MeasurementVector new_measurement, float dt, ControlVector control_vec = ControlVector{})
@@ -50,7 +50,7 @@ public:
             std::cout << "Filter needs to be initialized with initial state and covariance" << std::endl;
             return;
         }
-        update(predict(dt,control_vec), new_measurement);
+        update(predict(dt, control_vec), new_measurement);
     }
 
     void init(std::vector<float> initial_state, std::vector<float> initial_state_covariance)
@@ -102,7 +102,7 @@ private:
                 state_trans_dt_.evaluate(dt) * initial_state_cov_ * state_trans_dt_.evaluate(dt).transpose() + process_noise_dt_.evaluate(dt)};
         }
         else
-        {   
+        {
             return PredictionResult{
                 (state_trans_dt_.evaluate(dt) * initial_state_) + control_dt_.evaluate(dt) * control_input,
                 state_trans_dt_.evaluate(dt) * initial_state_cov_ * (state_trans_dt_.evaluate(dt)).transpose() + process_noise_dt_.evaluate(dt)};
@@ -112,8 +112,8 @@ private:
     {
         auto kalman_gain = pred_res.predicted_covariance_ * obs_mat_.transpose() * (obs_mat_ * pred_res.predicted_covariance_ * obs_mat_.transpose() + meas_noise_cov_mat_).inverse();
         auto inovation = new_measurement - obs_mat_ * pred_res.predicted_state_;
-        initial_state_.noalias() = pred_res.predicted_state_ + kalman_gain * inovation;
-        initial_state_cov_.noalias() = (Eigen::Matrix<float, StateSize, StateSize>::Identity() - kalman_gain * obs_mat_) * pred_res.predicted_covariance_;
+        initial_state_ = pred_res.predicted_state_ + kalman_gain * inovation;
+        initial_state_cov_ = (Eigen::Matrix<float, StateSize, StateSize>::Identity() - kalman_gain * obs_mat_) * pred_res.predicted_covariance_;
     }
 
     // partial_update static implementation

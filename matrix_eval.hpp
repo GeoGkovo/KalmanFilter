@@ -3,7 +3,6 @@
 
 #include <Eigen/Dense>
 
-
 template <typename T, int Rows, int Cols, typename F>
 struct MatrixFunctionWrapper
 {
@@ -29,9 +28,9 @@ auto make_matrix_function_wrapper(F f)
 
 // Non-constexpr dummy wrapper
 const auto default_dummy_wrapper = make_matrix_function_wrapper<double, 0, 0>(
-    [](double) -> Eigen::Matrix<double, 0, 0> {
+    [](double) -> Eigen::Matrix<double, 0, 0>
+    {
         return Eigen::Matrix<double, 0, 0>();
-    }
-);
+    });
 
 #endif

@@ -15,7 +15,6 @@
     - Benchmark
 */
 
-
 int main(int argc, char **argv)
 {
     const int state_vector_size = 3;
@@ -75,7 +74,7 @@ int main(int argc, char **argv)
     kf.init(init_state, init_state_cov);
 
     /*********** Benchmarking session *************/
-    int num_iter = 1000000;
+    int num_iter = 100000;
     std::random_device rd;  // Non-deterministic seed
     std::mt19937 gen(rd()); // Mersenne Twister engine
     std::uniform_real_distribution<float> dist(1.0f, 10.0f);
