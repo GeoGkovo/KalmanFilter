@@ -119,7 +119,7 @@ int main(int argc, char **argv)
 
     for (size_t i = 0; i < values.size(); ++i)
     {
-        kf.filter_partial(partial_values[i], solo_meas[0], dt_values[i], input_values[i]);
+        kf.filter_partial<0>(values_part1[i], dt_values[i], input_values[i]);
     }
 
     end = std::chrono::high_resolution_clock::now();

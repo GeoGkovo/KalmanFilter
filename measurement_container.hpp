@@ -10,6 +10,9 @@ class MeasurementContainer
 public:
     using vector_types = std::tuple<VectorTypes...>;
 
+    template <std::size_t Idx>
+    using vector_type_at = typename std::tuple_element<Idx, vector_types>::type;
+
     MeasurementContainer() = default;
 
     template <std::size_t I>

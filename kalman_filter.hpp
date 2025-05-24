@@ -8,7 +8,7 @@
 
 /*TODO
     - Make an example.
-    - Optimize the multiplication flow by reducing duplication.
+    - Optimize the multiplication flow by reducing duplication. Not needed because of lazy evalution of Eigen?
     - Use smaller names for typedefs. Directly from math.
     - Add initialization strategy (plugin)
 */
@@ -33,8 +33,8 @@ public:
     {
     }
 
-    //Initialization functions using an estimate of the initial state and covariance.
-    // The std::vector version requires that the matrices are vectorized in a row major manner.
+    // Initialization functions using an estimate of the initial state and covariance.
+    //  The std::vector version requires that the matrices are vectorized in a row major manner.
     void init(std::vector<float> initial_state, std::vector<float> initial_state_covariance)
     {
         toMatrix(initial_state, initial_state_);
@@ -49,7 +49,7 @@ public:
         initialized_ = true;
     }
 
-    //Filtering using only one measurement along with the index it has in MeasurementContainer, indexes start from 0.
+    // Filtering using only one measurement along with the index it has in MeasurementContainer, indexes start from 0.
     void filter_partial(std::vector<float> new_measurement, int measurement_idx, float dt, ControlVector control_vec = ControlVector{})
     {
         if (!initialized_)
@@ -60,8 +60,20 @@ public:
         partial_update(predict(dt, control_vec), new_measurement, measurement_idx);
     }
 
-    //Filtering using the full measurement vector. The measurements need to be appended in the same way they were declared in
-    //the MeasurementContainer
+    template <std::size_t Idx>
+    void filter_partial(const typename std::tuple_element<Idx, typename MeasurementContainer::vector_types>::type &vec, float dt, ControlVector control_vec = ControlVector{})
+    {
+        if (!initialized_)
+        {
+            std::cerr << "Filter needs to be initialized with initial state and covariance" << std::endl;
+            return;
+        }
+
+        partial_update<Idx>(predict(dt, control_vec), vec);
+    }
+
+    // Filtering using the full measurement vector. The measurements need to be appended in the same way they were declared in
+    // the MeasurementContainer
     void filter_full(MeasurementVector new_measurement, float dt, ControlVector control_vec = ControlVector{})
     {
         if (!initialized_)
@@ -83,9 +95,9 @@ public:
         return initial_state_cov_;
     }
 
-    std::pair<const StateVector&, const StateCovMat&> get_estimate()
+    std::pair<const StateVector &, const StateCovMat &> get_estimate()
     {
-        return std::make_pair(initial_state_,initial_state_cov_);
+        return std::make_pair(initial_state_, initial_state_cov_);
     }
 
 private:
@@ -135,50 +147,28 @@ private:
     }
 
     // partial_update static implementation
+    template <int Idx>
     inline void partial_update(const PredictionResult &pred_res,
-                               const std::vector<float> &new_measurement,
-                               int measurement_idx)
+                               const typename std::tuple_element<Idx, typename MeasurementContainer::vector_types>::type &new_measurement)
     {
         constexpr std::size_t N = std::tuple_size<VectorTypes>::value;
-        static constexpr auto dispatch_table = make_dispatch_table(std::make_index_sequence<N>{});
 
-        if (measurement_idx < 0 || static_cast<std::size_t>(measurement_idx) >= N)
+        if (Idx < 0 || static_cast<std::size_t>(Idx) >= N)
         {
             throw std::out_of_range("Invalid measurement index");
         }
-
-        auto fn = dispatch_table[measurement_idx];
-        (this->*fn)(pred_res, new_measurement);
-    }
-
-    // templated private function
-    template <int Index>
-    inline void partial_update_impl(const PredictionResult &pred_res,
-                                    const std::vector<float> &new_measurement)
-    {
-        constexpr std::size_t start = MeasurementContainer::template start_index<Index>();
-        constexpr std::size_t end = MeasurementContainer::template end_index<Index>();
-        constexpr std::size_t rows = end - start;
-
-        using SubVec = Eigen::Matrix<float, rows, 1>;
-        Eigen::Map<const SubVec> new_meas(new_measurement.data() + start);
-
-        auto H_partial = obs_mat_.block(start, 0, rows, obs_mat_.cols());
+        constexpr std::size_t start = MeasurementContainer::template start_index<Idx>();
+        constexpr std::size_t end = MeasurementContainer::template end_index<Idx>();
+        constexpr std::size_t rows = end - start + 1;
+        auto H_partial = obs_mat_.block(start, 0, rows , obs_mat_.cols());
         auto R_partial = meas_noise_cov_mat_.block(start, start, rows, rows);
 
         auto kalman_gain = pred_res.predicted_covariance_ * H_partial.transpose() *
                            (H_partial * pred_res.predicted_covariance_ * H_partial.transpose() + R_partial).inverse();
 
-        auto innovation = new_meas - H_partial * pred_res.predicted_state_;
+        auto innovation = new_measurement - H_partial * pred_res.predicted_state_;
         initial_state_.noalias() = pred_res.predicted_state_ + kalman_gain * innovation;
         initial_state_cov_.noalias() = (Eigen::Matrix<float, StateSize, StateSize>::Identity() - kalman_gain * H_partial) * pred_res.predicted_covariance_;
     }
 
-    // static dispatch table of pointers to templated member functions.
-    template <std::size_t... Is>
-    static constexpr auto make_dispatch_table(std::index_sequence<Is...>)
-    {
-        using FnPtr = void (KalmanFilter::*)(const PredictionResult &, const std::vector<float> &);
-        return std::array<FnPtr, sizeof...(Is)>{&KalmanFilter::partial_update_impl<Is>...};
-    }
 };
