@@ -15,25 +15,85 @@
     - Benchmark
 */
 
+template <int StateSize, int MeasurementSize, int ControlSize, int SampleNum>
+class KalmanTest
+{
+public:
+    using StateVector = Eigen::Vector<float, StateSize>;
+
+    KalmanTest() : dist(1.0f, 10.0f), dist_dt(0.0f, 1.0f), gen(std::random_device{}())
+    {
+        generateRandomMatrix(initial_state_vec_);
+        generateRandomMatrix(initial_state_cov_matrix_);
+        generateRandomMatrix(obs_mat_);
+        generateRandomMatrix(meas_noise_cov_mat_);
+        dts_.resize(SampleNum);
+        control_vec_.resize(SampleNum);
+        meas_vec_.resize(SampleNum);
+        for (int i = 0; i < SampleNum; i++)
+        {
+            dts_[i] = dist_dt(gen);
+            control_vec_[i] = generateRandomMatrix<float, ControlSize, 1>();
+            meas_vec_[i] = generateRandomMatrix<float, MeasurementSize, 1>();
+        }
+    }
+
+    template <typename T, int Rows, int Cols>
+    void generateRandomMatrix(Eigen::Matrix<T, Rows, Cols> &mat)
+    {
+        if (Rows * Cols <= 0)
+        {
+            throw std::invalid_argument("Rows an Cols need to be positive numbers.");
+        }
+        for (int i = 0; i < Rows * Cols; i++)
+        {
+            mat(i) = dist(gen);
+        }
+    }
+
+    template <typename T, int Rows, int Cols>
+    Eigen::Matrix<T, Rows, Cols> generateRandomMatrix()
+    {
+        if (Rows * Cols <= 0)
+        {
+            throw std::invalid_argument("Rows an Cols need to be positive numbers.");
+        }
+        Eigen::Matrix<float, Rows, Cols> mat;
+        for (int i = 0; i < Rows * Cols; i++)
+        {
+            mat(i) = dist(gen);
+        }
+        return mat;
+    }
+
+private:
+    Eigen::Vector<float, StateSize> initial_state_vec_;
+    Eigen::Matrix<float, StateSize, StateSize> initial_state_cov_matrix_;
+
+    Eigen::Matrix<float, MeasurementSize, StateSize> obs_mat_;
+    Eigen::Matrix<float, MeasurementSize, MeasurementSize> meas_noise_cov_mat_;
+
+    std::vector<float> dts_;
+    std::vector<Eigen::Vector<float, ControlSize>> control_vec_;
+    std::vector<Eigen::Vector<float, MeasurementSize>> meas_vec_;
+
+    std::mt19937 gen;
+    std::uniform_real_distribution<float> dist;
+    std::uniform_real_distribution<float> dist_dt;
+};
+
 int main(int argc, char **argv)
 {
+    //KalmanTest<3, 3, 1, 1000> kt;
+
     const int state_vector_size = 3;
     const int measurement_vector_size = 3;
     const int control_input_vector_size = 1;
 
-    std::vector<float> observation_mat{1, 0, 1, 3, 5, 0, 3, 6, 9}; // H
-    auto observation_matrix = getMatrix<Eigen::Matrix<float, 3, 3>>(observation_mat);
-    std::vector<float> measurement_noise_covariance{4, 2, 7, 1, 4, 7, 8, 9, 3};
-    auto measurement_noise_covariance_matrix = getMatrix<Eigen::Matrix<float, 3, 3>>(measurement_noise_covariance); // R
-
-    Eigen::Vector<float, state_vector_size>
-        state_vector(0, 1, 0); // state at t=0
-
-    Eigen::Matrix<float, state_vector_size, state_vector_size> state_covariance_matrix; // P
-    state_covariance_matrix << 1, 0, 0, 1, 0, 1, 0, 1, 1;
+    auto observation_matrix = getMatrix<Eigen::Matrix<float, 3, 3>>(std::vector<float>{1, 0, 1, 3, 5, 0, 3, 6, 9});
+    auto measurement_noise_covariance_matrix = getMatrix<Eigen::Matrix<float, 3, 3>>(std::vector<float>{4, 2, 7, 1, 4, 7, 8, 9, 3}); // R
 
     // state transition F
-
     auto state_transition = [](float x) -> Eigen::Matrix<float, 3, 3>
     {
         Eigen::Matrix<float, 3, 3> mat;
@@ -45,6 +105,7 @@ int main(int argc, char **argv)
 
     auto StateTransition_fs = make_matrix_function_wrapper<float, 3, 3>(state_transition);
 
+    // Process Noise Covariance Q
     auto process_noise = [](float x) -> Eigen::Matrix<float, 3, 3>
     {
         Eigen::Matrix<float, 3, 3> mat;
@@ -74,9 +135,9 @@ int main(int argc, char **argv)
     kf.init(init_state, init_state_cov);
 
     /*********** Benchmarking session *************/
-    int num_iter = 100000;
-    std::random_device rd;  // Non-deterministic seed
-    std::mt19937 gen(rd()); // Mersenne Twister engine
+    int num_iter = 10000;
+    std::random_device rd;
+    std::mt19937 gen(rd());
     std::uniform_real_distribution<float> dist(1.0f, 10.0f);
     std::uniform_real_distribution<float> dist_dt(0.0f, 1.0f);
     std::vector<Eigen::Vector<float, 3>> values(num_iter);
@@ -84,8 +145,6 @@ int main(int argc, char **argv)
     std::vector<Eigen::Vector<float, 1>> values_part2(num_iter);
     std::vector<Eigen::Vector<float, 1>> input_values(num_iter);
     std::vector<float> dt_values(num_iter);
-    std::vector<std::vector<float>> partial_values(num_iter);
-    std::vector<std::vector<float>> partial_values1(num_iter);
 
     std::cout << "Num of measurements: " << values.size() << std::endl;
 
@@ -97,9 +156,6 @@ int main(int argc, char **argv)
         input_values[i] = Eigen::Vector<float, 1>(dist(gen));
 
         dt_values[i] = dist_dt(gen);
-
-        partial_values[i] = {dist(gen), dist(gen)};
-        partial_values1[i] = {dist(gen)};
     }
 
     auto start = std::chrono::high_resolution_clock::now();

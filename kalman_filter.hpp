@@ -28,8 +28,8 @@ class KalmanFilter
     using VectorTypes = typename MeasurementContainer::vector_types;
 
 public:
-    KalmanFilter(MeasNoiseCovMat meas_noise_cov_mat, ObservationMat obs_mat, StateTransitionMatrix_dt func_set1, ProcessNoiseCov_dt func_set2, ControlMatrix_dt func_set3 = default_dummy_wrapper)
-        : meas_noise_cov_mat_(meas_noise_cov_mat), obs_mat_(obs_mat), state_trans_dt_(std::move(func_set1)), process_noise_dt_(std::move(func_set2)), control_dt_(std::move(func_set3))
+    KalmanFilter(MeasNoiseCovMat meas_noise_cov_mat, ObservationMat obs_mat, StateTransitionMatrix_dt state_trans_mat, ProcessNoiseCov_dt proc_noise_cov_mat, ControlMatrix_dt control_mat = default_dummy_wrapper)
+        : meas_noise_cov_mat_(meas_noise_cov_mat), obs_mat_(obs_mat), state_trans_dt_(std::move(state_trans_mat)), process_noise_dt_(std::move(proc_noise_cov_mat)), control_dt_(std::move(control_mat))
     {
     }
 
@@ -49,17 +49,7 @@ public:
         initialized_ = true;
     }
 
-    // Filtering using only one measurement along with the index it has in MeasurementContainer, indexes start from 0.
-    void filter_partial(std::vector<float> new_measurement, int measurement_idx, float dt, ControlVector control_vec = ControlVector{})
-    {
-        if (!initialized_)
-        {
-            std::cerr << "Filter needs to be initialized with initial state and covariance" << std::endl;
-            return;
-        }
-        partial_update(predict(dt, control_vec), new_measurement, measurement_idx);
-    }
-
+    // Filtering function using only one measurement (from the declared ones) along with the index it has in the MeasurementContainer, indexes start from 0.
     template <std::size_t Idx>
     void filter_partial(const typename std::tuple_element<Idx, typename MeasurementContainer::vector_types>::type &vec, float dt, ControlVector control_vec = ControlVector{})
     {
@@ -73,7 +63,7 @@ public:
     }
 
     // Filtering using the full measurement vector. The measurements need to be appended in the same way they were declared in
-    // the MeasurementContainer
+    // the MeasurementContainer.
     void filter_full(MeasurementVector new_measurement, float dt, ControlVector control_vec = ControlVector{})
     {
         if (!initialized_)
@@ -84,7 +74,7 @@ public:
         update(predict(dt, control_vec), new_measurement);
     }
 
-    // Functions to get the current estimated state information
+    // Getters of the current estimated state and state covariance
     const StateVector &getState()
     {
         return initial_state_;
@@ -138,17 +128,16 @@ private:
                 state_trans_dt_.evaluate(dt) * initial_state_cov_ * (state_trans_dt_.evaluate(dt)).transpose() + process_noise_dt_.evaluate(dt)};
         }
     }
+
     void update(PredictionResult pred_res, MeasurementVector new_measurement)
     {
         auto kalman_gain = pred_res.predicted_covariance_ * obs_mat_.transpose() * (obs_mat_ * pred_res.predicted_covariance_ * obs_mat_.transpose() + meas_noise_cov_mat_).inverse();
-        auto inovation = new_measurement - obs_mat_ * pred_res.predicted_state_;
-        initial_state_ = pred_res.predicted_state_ + kalman_gain * inovation;
+        initial_state_ = pred_res.predicted_state_ + kalman_gain * /*innovation part*/ (new_measurement - obs_mat_ * pred_res.predicted_state_);
         initial_state_cov_ = (Eigen::Matrix<float, StateSize, StateSize>::Identity() - kalman_gain * obs_mat_) * pred_res.predicted_covariance_;
     }
 
-    // partial_update static implementation
     template <int Idx>
-    inline void partial_update(const PredictionResult &pred_res,
+    void partial_update(const PredictionResult &pred_res,
                                const typename std::tuple_element<Idx, typename MeasurementContainer::vector_types>::type &new_measurement)
     {
         constexpr std::size_t N = std::tuple_size<VectorTypes>::value;
@@ -166,9 +155,7 @@ private:
         auto kalman_gain = pred_res.predicted_covariance_ * H_partial.transpose() *
                            (H_partial * pred_res.predicted_covariance_ * H_partial.transpose() + R_partial).inverse();
 
-        auto innovation = new_measurement - H_partial * pred_res.predicted_state_;
-        initial_state_.noalias() = pred_res.predicted_state_ + kalman_gain * innovation;
+        initial_state_.noalias() = pred_res.predicted_state_ + kalman_gain * /*innovation part*/ (new_measurement - H_partial * pred_res.predicted_state_);
         initial_state_cov_.noalias() = (Eigen::Matrix<float, StateSize, StateSize>::Identity() - kalman_gain * H_partial) * pred_res.predicted_covariance_;
     }
-
 };
